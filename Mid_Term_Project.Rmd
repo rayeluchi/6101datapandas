@@ -1,0 +1,127 @@
+---
+title: "Mid_Term_Project"
+author: "Data Pandas"
+date: "2025-03-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r init, include=F}
+# The package "ezids" (EZ Intro to Data Science) includes a lot of the helper functions we developed for the course. 
+# Some of the frequently used functions are loadPkg(), xkabledply(), xkablesummary(), uzscale(), etc.
+# Once installed, load the library.
+library(ezids)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+Lets load the dataset:
+
+```{r, include=T}
+
+BikeShare_Data <- data.frame(read.csv("202501-capitalbikeshare-tripdata.csv"))
+
+```
+
+Before Cleaning the data, Let's see a few Rows in the dataset.
+
+```{r, results='markup'}
+head(BikeShare_Data, n=5)
+tail(BikeShare_Data, n=3)
+```
+
+Let's see the structure of the variables
+
+```{r}
+str(BikeShare_Data)
+```
+
+Now, let's get the summary of the raw data,
+
+```{r}
+summary(BikeShare_Data)
+```
+
+Now, Let's go into Data Preprocessing,
+
+We should remove the unwanted columns like start_lat, start_lng, end_lat, end_lng, start_station_id, end_station_id from our dataset since those columns will be irrelevant. Also, convert the member_casual variable into factor.
+
+```{r}
+
+BikeShare_Data$end_lat <- NULL
+BikeShare_Data$end_lng <- NULL
+BikeShare_Data$start_lat <- NULL
+BikeShare_Data$start_lng <- NULL
+BikeShare_Data$member_casual <- as.factor(BikeShare_Data$member_casual)
+str(BikeShare_Data)
+```
+
+There might be some duplicate values in the data. We removed them.
+
+```{r}
+duplicates_count <- sum(duplicated(BikeShare_Data))
+duplicates_count
+
+BikeShare_Data <- BikeShare_Data[!duplicated(BikeShare_Data), ]
+
+cat("Number of duplicates removed:", duplicates_count, "\n")
+cat("Rows remaining after removing duplicates:", nrow(BikeShare_Data), "\n")
+str(BikeShare_Data)
+```
+
+There are no duplicate values at all! Capital Bikeshare is maintaining it's data very accurately.
+
+We will check for the missing values in the dataset and remove the rows with missing values.
+```{r}
+missing_values <- colSums(is.na(BikeShare_Data))
+missing_values
+```
+
+There are many missing values in the columns start_station_id, end_station_id. Since the start station and end station details are crucial for our analysis, its better if we remove the rows where the start station and end station are missing.
+
+```{r}
+BikeShare_Data <- BikeShare_Data[!is.na(BikeShare_Data$start_station_id) & 
+                                 !is.na(BikeShare_Data$end_station_id), ]
+colSums(is.na(BikeShare_Data))
+
+str(BikeShare_Data)
+```
+
+There are a few rides which started in 31st Dec 2024 but ended on 1st Jan 2025. We will remove those rows and then put them in an oredr according to the time they were started at.
+```{r}
+BikeShare_Data <- BikeShare_Data[BikeShare_Data$started_at >= "2025-01-01", ]
+BikeShare_Data$started_at <- as.POSIXct(BikeShare_Data$started_at)
+BikeShare_Data$ended_at <- as.POSIXct(BikeShare_Data$ended_at)
+
+BikeShare_Data <- BikeShare_Data[order(BikeShare_Data$started_at), ]
+nrow(BikeShare_Data)
+
+```
+
+We have created a few new columns named "trip_duration",  which will be helpful for future analysis. Also, we removed the outliers.
+```{r}
+
+BikeShare_Data$trip_duration <- as.numeric(difftime(BikeShare_Data$ended_at, 
+                                                    BikeShare_Data$started_at, 
+                                                    units = "mins"))
+
+BikeShare_Data$hour_of_day <- format(BikeShare_Data$started_at, "%H")
+
+BikeShare_Data$day_of_week <- weekdays(BikeShare_Data$started_at)
+
+BikeShare_Data$day_of_week <- factor(BikeShare_Data$day_of_week, 
+                                     levels = c("Monday", "Tuesday", "Wednesday", 
+                                                "Thursday", "Friday", "Saturday", "Sunday"),
+                                     ordered = TRUE)
+
+BikeShare_Data <- BikeShare_Data[BikeShare_Data$trip_duration > 0 & BikeShare_Data$trip_duration < 720,]
+
+head(BikeShare_Data)
+```
+
