@@ -1,0 +1,99 @@
+---
+title: "Mid_Term_Project_MNC2"
+author: "Data Pandas"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+Let's explore the variance or spread of our dataset using standard deviation and variance measures. 
+```{r}
+#First we'll load the dataset
+BikeShare_Data
+```
+Trip duration is a good variable for us to look at in order to understand variation in how customers are using the BikeShare.
+
+```{r}
+sd.trip_duration <- sd(BikeShare_Data$trip_duration)
+mean.trip_duration <- mean(BikeShare_Data$trip_duration)
+
+print(mean.trip_duration)
+print(sd.trip_duration)
+
+```
+
+The average trip length is 11 minutes, with a standard deviation of 14.9 minutes. That indicates a lot of variance in our dataset!
+
+Let's also run the vairance, mean, and sd directly.
+
+```{r, echo=TRUE}
+var(BikeShare_Data$trip_duration, na.rm = T)
+mean(BikeShare_Data$trip_duration, na.rm = T)
+sd(BikeShare_Data$trip_duration, na.rm = T)
+```
+
+Our variance and SD are large, indicating that we have both short and long trips in our dataset compared to the mean. Let's check the range.
+
+```{r}
+range(BikeShare_Data$trip_duration, na.rm = TRUE)
+
+```
+
+Yep, that's a large range! We probably have some outliers that are impacting that, so let's also check the interquartile range. 
+
+```{r}
+IQR(BikeShare_Data$trip_duration, na.rm = TRUE)
+```
+
+Much smaller! That indicates the outliers are having a strong impact. Let's visualize this with a boxplot. We'll check to make sure our data is suitable for that visualization first.
+
+```{r}
+summary(BikeShare_Data$trip_duration)
+BikeShare_Data <- na.omit(BikeShare_Data)
+```
+
+Because the range is so wide, we probably need to remove the true outliers in order to have a visualization that makes sense. We'll remove the upper and lower bounds from our IQR in order to do that. 
+```{r}
+
+Q1 <- quantile(BikeShare_Data$trip_duration, 0.25, na.rm = TRUE)
+Q3 <- quantile(BikeShare_Data$trip_duration, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+#Defining the outlier bounds
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Filter out the observations where trip_duration is outside the upper and lower bounds as we've defined them
+BikeShare_Data_no_outliers <- BikeShare_Data %>%
+  filter(trip_duration >= lower_bound & trip_duration <= upper_bound)
+
+#Check the new data
+summary(BikeShare_Data_no_outliers$trip_duration)
+
+```
+
+This will be much easier to interpret. 
+```{r}
+# Boxplot after removing outliers
+ggplot(BikeShare_Data_no_outliers, aes(y = trip_duration)) +
+  geom_boxplot(
+    outlier.colour = "navy",  # Color outliers in red
+    outlier.size = 3,        # Size of the outliers
+    fill = "#00FFFF",        # Fill the box with cyan
+    color = "black"          # Border color of the box
+  ) +       
+  labs(title = "Box Plot of Trip Duration (Outliers Removed)",
+       y = "Trip Duration") +
+  theme_minimal()
+```
+
+

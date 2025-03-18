@@ -1,0 +1,487 @@
+---
+title: "Mid_Term_Confidence_Intervals"
+author: "Data Pandas"
+date: "2025-03-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r init, include=F}
+# The package "ezids" (EZ Intro to Data Science) includes a lot of the helper functions we developed for the course. 
+# Some of the frequently used functions are loadPkg(), xkabledply(), xkablesummary(), uzscale(), etc.
+# Once installed, load the library.
+library(ezids)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+Lets load the dataset:
+
+```{r, include=T}
+
+BikeShare_Data <- data.frame(read.csv("202501-capitalbikeshare-tripdata.csv"))
+
+```
+
+Before Cleaning the data, Let's see a few Rows in the dataset.
+
+```{r, results='markup'}
+head(BikeShare_Data, n=5)
+tail(BikeShare_Data, n=3)
+```
+
+Let's see the structure of the variables
+
+```{r}
+str(BikeShare_Data)
+```
+
+Now, let's get the summary of the raw data,
+
+```{r}
+summary(BikeShare_Data)
+```
+
+Now, Let's go into Data Preprocessing,
+
+We should remove the unwanted columns like start_lat, start_lng, end_lat, end_lng, start_station_id, end_station_id from our dataset since those columns will be irrelevant. Also, convert the member_casual variable into factor.
+
+```{r}
+
+BikeShare_Data$end_lat <- NULL
+BikeShare_Data$end_lng <- NULL
+BikeShare_Data$start_lat <- NULL
+BikeShare_Data$start_lng <- NULL
+BikeShare_Data$member_casual <- as.factor(BikeShare_Data$member_casual)
+str(BikeShare_Data)
+```
+
+There might be some duplicate values in the data. We removed them.
+
+```{r}
+duplicates_count <- sum(duplicated(BikeShare_Data))
+duplicates_count
+
+BikeShare_Data <- BikeShare_Data[!duplicated(BikeShare_Data), ]
+
+cat("Number of duplicates removed:", duplicates_count, "\n")
+cat("Rows remaining after removing duplicates:", nrow(BikeShare_Data), "\n")
+str(BikeShare_Data)
+```
+
+There are no duplicate values at all! Capital Bikeshare is maintaining it's data very accurately.
+
+We will check for the missing values in the dataset and remove the rows with missing values.
+```{r}
+missing_values <- colSums(is.na(BikeShare_Data))
+missing_values
+```
+
+There are many missing values in the columns start_station_id, end_station_id. Since the start station and end station details are crucial for our analysis, its better if we remove the rows where the start station and end station are missing.
+
+```{r}
+BikeShare_Data <- BikeShare_Data[!is.na(BikeShare_Data$start_station_id) & 
+                                 !is.na(BikeShare_Data$end_station_id), ]
+colSums(is.na(BikeShare_Data))
+
+str(BikeShare_Data)
+```
+
+There are a few rides which started in 31st Dec 2024 but ended on 1st Jan 2025. We will remove those rows and then put them in an oredr according to the time they were started at.
+```{r}
+BikeShare_Data <- BikeShare_Data[BikeShare_Data$started_at >= "2025-01-01", ]
+BikeShare_Data$started_at <- as.POSIXct(BikeShare_Data$started_at)
+BikeShare_Data$ended_at <- as.POSIXct(BikeShare_Data$ended_at)
+
+BikeShare_Data <- BikeShare_Data[order(BikeShare_Data$started_at), ]
+nrow(BikeShare_Data)
+
+```
+
+We have created a few new columns named "trip_duration",  which will be helpful for future analysis. Also, we removed the outliers.
+```{r}
+
+BikeShare_Data$trip_duration <- as.numeric(difftime(BikeShare_Data$ended_at, 
+                                                    BikeShare_Data$started_at, 
+                                                    units = "mins"))
+
+BikeShare_Data$hour_of_day <- format(BikeShare_Data$started_at, "%H")
+
+BikeShare_Data$day_of_week <- weekdays(BikeShare_Data$started_at)
+
+BikeShare_Data$day_of_week <- factor(BikeShare_Data$day_of_week, 
+                                     levels = c("Monday", "Tuesday", "Wednesday", 
+                                                "Thursday", "Friday", "Saturday", "Sunday"),
+                                     ordered = TRUE)
+
+BikeShare_Data <- BikeShare_Data[BikeShare_Data$trip_duration > 0 & BikeShare_Data$trip_duration < 720,]
+
+head(BikeShare_Data)
+```
+
+Now, lets do some EDA.
+
+We'll start with some simple histograms. 
+
+```{r}
+library(ggplot2)
+
+#regular bikes vs. ebikes
+ggplot(BikeShare_Data, aes(x = rideable_type, fill = rideable_type)) +
+  geom_bar() +
+  labs(title = "Distribution of Rideable Types",
+       x = "Rideable Type",
+       y = "Count") +
+  scale_fill_manual(values = c("electric_bike" = "navy", "classic_bike" = "lightblue")) +
+  theme_minimal()
+```
+
+This shows us that Ebikes were more popular than classic bikes. 
+
+```{r}
+#Since we're interested in when how usage varied, let's look at the number of rides per weekday
+
+ggplot(BikeShare_Data, aes(x = day_of_week, fill = day_of_week)) +
+  geom_bar() +
+  labs(title = "Number of Bike Rides per Weekday",
+       x = "Weekday",
+       y = "Number of Rides") +
+scale_fill_manual(values = c("#b3cde3", "#8c96c6", "#4b6fa5", "#2b5c8a", "#104e8b", "#08306b", "#041e42")) +   # Shades of blue to match our powerpoint!
+  theme_minimal() +
+  theme(legend.position = "none")  
+```
+This shows us that bike rides peak on Thursday. They are very similar for the weekend days of Saturday and Sunday. Monday is the least popular day for BikeShare rides.
+
+```{r}
+#Again, since we're interested in how usage varies, let's look at how frequently BikeShare rides are occurring throughout the course of the day.
+
+ggplot(BikeShare_Data, aes(x = factor(hour_of_day), fill = ..count..)) +
+  geom_bar(color = "black") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Bike Usage by Hour of the Day",
+       x = "Hour of the Day",
+       y = "Number of Rides") +
+  theme_minimal()
+```
+
+This shows us the rush hour spikes at 8AM and 5PM, when BikeShare users are likely commuting.
+
+If our hypothesis that commuting to work is what is driving the spikes at those times, we should see a difference between weekday and weekend usage.
+
+```{r}
+#Comparing usage by time of day on weekdays vs. weekends
+
+library(dplyr)
+
+# Let's group our existing day_of_week variable to create categories for Weekday vs. Weekend for easy comparison
+BikeShare_Data <- BikeShare_Data %>%
+  mutate(day_type = ifelse(day_of_week %in% c("Saturday", "Sunday"), "Weekend", "Weekday"))
+
+ggplot(BikeShare_Data, aes(x = factor(hour_of_day), fill = day_type)) +
+  geom_bar(position = "dodge", color = "black") +
+  facet_wrap(~day_type) +  # Creates separate plots for Weekday and Weekend
+  labs(title = "Bike Usage by Hour: Weekdays vs. Weekends",
+       x = "Hour of the Day",
+       y = "Number of Rides") +
+  scale_fill_manual(values = c("Weekday" = "#87CEEB", "Weekend" = "#0000CD")) +
+  scale_x_discrete(breaks = c("08", "17"))
+theme_minimal()
+
+```
+
+We can clearly the see difference in scale but it's hard to interpret. Let's adjust it to highlight where the biggest differences in usage per hour on weekdays vs. weekends is. 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Calculate ride counts for each hour and day type and the difference between them so we can highlight it visually.
+hourly_counts <- BikeShare_Data %>%
+  group_by(hour_of_day, day_type) %>%
+  summarise(rides = n(), .groups = "drop") %>%
+   spread(key = day_type, value = rides, fill = 0) %>% 
+  mutate(difference = abs(Weekday - Weekend)) 
+
+# Find the top 2 hours with the greatest difference. If our hypothesis is correct it will be 08 and 17.
+top_diff_hours <- hourly_counts %>%
+  top_n(2, difference) %>%
+  pull(hour_of_day)
+
+BikeShare_Data <- BikeShare_Data %>%
+  mutate(highlight = ifelse(hour_of_day %in% top_diff_hours, "Highlighted", "Normal"))
+
+ggplot(BikeShare_Data, aes(x = factor(hour_of_day), fill = highlight)) +
+  geom_bar(position = "dodge", color = "black") +
+  facet_wrap(~day_type) +  
+  labs(title = "Bike Usage by Hour: Major Difference Indicate Commuting Trends",
+       x = "Hour of the Day",
+       y = "Number of Rides") +
+  scale_fill_manual(values = c("Highlighted" = "#007FFF", "Normal" = "gray")) +  
+    scale_x_discrete(breaks = as.character(top_diff_hours)) + 
+  guides(fill = "none") +
+  theme_minimal()
+
+```
+
+Much better! This graph clearly shows the distinction between ridership during peak commute times on weekday vs. weekends.
+
+```{r}
+#Let's count the difference so we can add some granularity to these visible differences. 
+ride_counts <- BikeShare_Data %>%
+  filter(hour_of_day %in% c(8, 17)) %>%  # Filter for 08:00 and 17:00
+  group_by(day_of_week, hour_of_day) %>%  # Group by day of week and hour
+  summarise(num_rides = n(), .groups = "drop")  # Count the number of rides
+
+ride_counts
+```
+
+We can also look at the difference in terms of averages. 
+```{r}
+avg_rides <- BikeShare_Data %>%
+  group_by(day_type) %>%
+  summarise(avg_rides = n() / length(unique(day_of_week)), .groups = "drop")
+
+avg_rides
+```
+
+
+We are also interested in which locations are the most popular. Since we have two location variables, start_station_name and end_station_name, let's start by looking at them individually.
+
+```{r}
+#First we'll count both variables and restrict the data we want to visualize to the top 10.
+start_station_counts <- BikeShare_Data %>%
+  count(start_station_name, sort = TRUE) %>%
+  top_n(10, n)
+
+end_station_counts <- BikeShare_Data %>%
+  count(end_station_name, sort = TRUE) %>%
+  top_n(10, n) 
+```
+
+
+```{r}
+#plotting the most popular start stations
+ggplot(start_station_counts, aes(x = reorder(start_station_name, n), y = n, fill = start_station_name)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 Most Popular Start Stations",
+       x = "Start Station",
+       y = "Number of Rides") +
+    guides(fill = "none") +
+  theme_minimal() +
+  scale_fill_manual(values = scales::brewer_pal(palette = "Blues")(10)) 
+```
+
+```{r}
+#plotting the most popular end stations
+ggplot(end_station_counts, aes(x = reorder(end_station_name, n), y = n, fill = end_station_name)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 Most Popular End Stations",
+       x = "End Station",
+       y = "Number of Rides") +
+  guides(fill = "none") +
+  theme_minimal() +
+  scale_fill_manual(values = scales::brewer_pal(palette = "Blues")(10)) 
+```
+
+Now we'll combine them to see which stations get the most overall traffic. 
+
+```{r}
+#plotting most popular stations by combined start and stop measure.
+combined_station_data <- BikeShare_Data %>%
+  gather(key = "station_type", value = "station_name", start_station_name, end_station_name) %>%
+  count(station_name, sort = TRUE) %>%
+  top_n(10, n)  # Top 10 stations
+
+# Plot Combined Start and End Stations
+ggplot(combined_station_data, aes(x = reorder(station_name, n), y = n, fill = station_name)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 Most Popular Stations",
+       x = "Station",
+       y = "Number of Rides") +
+   guides(fill = "none") +
+  theme_minimal() +
+  scale_fill_manual(values = scales::brewer_pal(palette = "Blues")(10)) 
+```
+
+```{r}
+hist(as.numeric(BikeShare_Data$hour_of_day), breaks = 24, main = "Histogram of Ride Start Hours", xlab = "Hour of the Day", ylab = "Number of rides", col = "skyblue", border = "black")
+
+# Q-Q plot for Ride Start Hours
+qqnorm(as.numeric(BikeShare_Data$hour_of_day), main = "Q-Q Plot of Ride Start Hours")
+qqline(as.numeric(BikeShare_Data$hour_of_day), col = "skyblue", lwd = 2)
+
+ride_end_hours = as.numeric(format(BikeShare_Data$ended_at, "%H"))
+hist(ride_end_hours, breaks = 24, main = "Histogram of Ride End Hours", xlab = "Hour of the Day", ylab = "Number of rides", col = "skyblue", border = "black")
+
+# Q-Q plot for Ride End Hours
+qqnorm(ride_end_hours, main = "Q-Q Plot of Ride End Hours")
+qqline(ride_end_hours, col = "skyblue", lwd = 2)
+
+#Normality tests
+shapiro.test(sample(as.numeric(BikeShare_Data$hour_of_day), 5000))
+library(nortest)
+ad_test <- ad.test(as.numeric(BikeShare_Data$hour_of_day))
+ad_test
+```
+
+
+It is evident from the histograms and Q-Q plots of Ride Start/End Hours that the distribution is not normal and is left skewed.
+Also, when we test normality using Shapiro test, a p-value < 2.2e−16, indicates a strong evidence against normality.Similarly, the Anderson-Darling test
+shows a p-value < 2.2e−16, further confirming significant deviation from a normal distribution.
+
+```{r}
+hist(BikeShare_Data$trip_duration, breaks = 30, main = "Histogram of Trip Duration", xlab = "Trip Duration",ylab = "Number of rides", col = "skyblue", border = "black")
+qqnorm(BikeShare_Data$trip_duration)
+qqline(BikeShare_Data$trip_duration, col = "skyblue")
+
+member_ride_duration = BikeShare_Data$trip_duration[BikeShare_Data$member_casual == "member"]
+hist(member_ride_duration, breaks = 30, main = "Histogram of Member Trip Duration", xlab = "Trip Duration",ylab = "Number of rides", col = "skyblue", border = "black")
+
+casual_ride_duration = BikeShare_Data$trip_duration[BikeShare_Data$member_casual == "casual"]
+hist(member_ride_duration, breaks = 30, main = "Histogram of Casual Trip Duration", xlab = "Trip Duration",ylab = "Number of rides", col = "skyblue", border = "black")
+
+#Normality tests
+ad_test <- ad.test(BikeShare_Data$trip_duration)
+ad_test
+```
+
+
+The above histogram and Q-Q plots for Trip Duration indicates that the trip duration right skewed showing most of ride duration is under 10 minutes.
+When we further deep down to check Trip Duration for Casual and Member respectively there is no difference between their average ride duration.
+Also, the Anderson-Darling test shows a p-value < 2.2e−16, further confirming significant deviation from a normal distribution. 
+
+Let's explore the variance or spread of our dataset using standard deviation and variance measures. 
+```{r}
+#First we'll load the dataset
+BikeShare_Data
+```
+Trip duration is a good variable for us to look at in order to understand variation in how customers are using the BikeShare.
+
+```{r}
+sd.trip_duration <- sd(BikeShare_Data$trip_duration)
+mean.trip_duration <- mean(BikeShare_Data$trip_duration)
+
+print(mean.trip_duration)
+print(sd.trip_duration)
+
+```
+
+The average trip length is 11 minutes, with a standard deviation of 14.9 minutes. That indicates a lot of variance in our dataset!
+
+Let's also run the variance, mean, and sd directly.
+
+```{r, echo=TRUE}
+var(BikeShare_Data$trip_duration, na.rm = T)
+mean(BikeShare_Data$trip_duration, na.rm = T)
+sd(BikeShare_Data$trip_duration, na.rm = T)
+```
+
+Our variance and SD are large, indicating that we have both short and long trips in our dataset compared to the mean. Let's check the range.
+
+```{r}
+range(BikeShare_Data$trip_duration, na.rm = TRUE)
+
+```
+
+Yep, that's a large range! We probably have some outliers that are impacting that, so let's also check the interquartile range. 
+
+```{r}
+IQR(BikeShare_Data$trip_duration, na.rm = TRUE)
+```
+
+Much smaller! That indicates the outliers are having a strong impact. Let's visualize this with a boxplot. We'll check to make sure our data is suitable for that visualization first.
+
+```{r}
+summary(BikeShare_Data$trip_duration)
+BikeShare_Data <- na.omit(BikeShare_Data)
+```
+
+Because the range is so wide, we probably need to remove the true outliers in order to have a visualization that makes sense. We'll remove the upper and lower bounds from our IQR in order to do that. 
+```{r}
+
+Q1 <- quantile(BikeShare_Data$trip_duration, 0.25, na.rm = TRUE)
+Q3 <- quantile(BikeShare_Data$trip_duration, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+#Defining the outlier bounds
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Filter out the observations where trip_duration is outside the upper and lower bounds as we've defined them
+BikeShare_Data_no_outliers <- BikeShare_Data %>%
+  filter(trip_duration >= lower_bound & trip_duration <= upper_bound)
+
+#Check the new data
+summary(BikeShare_Data_no_outliers$trip_duration)
+
+```
+
+This will be much easier to interpret. 
+```{r}
+# Boxplot after removing outliers
+ggplot(BikeShare_Data_no_outliers, aes(y = trip_duration)) +
+  geom_boxplot(
+    outlier.colour = "navy",  # Color outliers in red
+    outlier.size = 3,        # Size of the outliers
+    fill = "#00FFFF",        # Fill the box with cyan
+    color = "black"          # Border color of the box
+  ) +       
+  labs(title = "Box Plot of Trip Duration (Outliers Removed)",
+       y = "Trip Duration") +
+  theme_minimal()
+```
+
+
+Now let's calculate the confidence intervals and z-scores. We chose to conduct the z test instead of the t test because of our large sample size and the fact that we just calculated the standard deviation.  
+
+```{r}
+ library(BSDA)  # Load package for z.test()
+
+# Sample size (excluding NA values)
+n <- sum(!is.na(BikeShare_Data$trip_duration))
+
+# Compute mean and standard deviation
+mean_trip_duration <- mean(BikeShare_Data$trip_duration, na.rm = TRUE)
+sd_trip_duration <- sd(BikeShare_Data$trip_duration, na.rm = TRUE)
+
+# Perform z-test assuming a known population standard deviation
+ztest95 <- z.test(x = BikeShare_Data$trip_duration, sigma.x = sd_trip_duration)
+
+# Compute the standard error
+se_trip_duration <- sd_trip_duration / sqrt(n)
+
+# Extract confidence interval from z.test() result
+lower_bound <- ztest95$conf.int[1]
+upper_bound <- ztest95$conf.int[2]
+
+# Print results
+cat("Mean Trip Duration:", mean_trip_duration, "minutes\n")
+cat("Standard Deviation:", sd_trip_duration, "minutes\n")
+cat("Sample Size:", n, "rides\n")
+cat("95% Confidence Interval: (", lower_bound, ",", upper_bound, ") minutes\n")
+
+# Calculate Z-scores for trip duration
+BikeShare_Data$z_score <- (BikeShare_Data$trip_duration - mean_trip_duration) / sd_trip_duration
+
+# Display first few rows with z-scores
+head(BikeShare_Data[, c("trip_duration", "z_score")])
+
+
+```
+
+Bike-share trips take around 11 minutes on average, which makes sense seeing as bikes are typically used to travel short distances. However, the standard deviation of 14.90 minutes suggests a high amount of variation in trip duration, with some users taking significantly shorter or longer rides.
+
+The confidence interval indicates that we are 95% confident that the mean trip duration falls between 10.96 and 11.11 minutes. This narrow interval means that our estimate is precise. 
+
+The prevalence of short trips reinforces the idea that bike-share programs function as a convenient option for brief commutes. However, the high variance in trip duration suggests that some users rely on the service for longer rides. Given this, bike-share companies should consider optimizing bike availability by frequently redistributing bikes to high-traffic stations. Additionally, analyzing z-scores can help identify irregular rides such as abnormally long trips, which may indicate potential issues like technical problems with bike returns.
+
