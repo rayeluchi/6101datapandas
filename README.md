@@ -1,5 +1,5 @@
 # “Pedaling” Data: Identifying Capital Bikeshare User Trends
-Download to view final report: https://github.com/rayeluchi/capital-bikeshare-data-analysis/blob/main/Draft-V2-Midterm-Summary-Paper.html 
+View final report: https://rayeluchi.github.io/capital-bikeshare-data-analysis/Project_Summary_Paper.html
 
 This study analyzes January 2025 data from Capital Bikeshare to identify high demand stations and temporal usage patterns in the Washington Metropolitan Area, informing strategies to optimize bike rebalancing and dock adjustments. Our analysis involved a deep dive into Capital Bike Share’s usage data, using a variety of visualizations and statistical methods to uncover demand patterns and station utilization by time of day and day of the week.
 
